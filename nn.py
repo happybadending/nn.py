@@ -1,14 +1,13 @@
 import numpy as np
 
 class Tensor:
-  def __init__(self, data, requires_grad=False):
+  def __init__(self, data, ctx=None):
     self.data = np.array(data)
     self.grad = None
-    self.ctx = None
-    self.requries_grad = requires_grad
+    self.ctx = ctx
 
   def __repr__(self):
-    return f"{self.data}"
+    return f"<T {self.data}>"
 
   def __neg__(self): return Neg.apply(self)
 
@@ -21,14 +20,22 @@ class Tensor:
 
   def backward(self):
     def toposort(node, visited, ret):
+      visited.add(node)
+      if node.ctx is None:
+        for t in node.ctx.parents:
+          if t not in visited: toposort(t, visited, ret)
+      ret.append(node)
       return ret
-    self.grad = Tensor(1)
+    self.grad = np.array(1)
     for node in reversed(toposort(self, set(), [])):
-      pass
+      for t, g in zip(node.ctx.parents, node.ctx.backward(node.grad)):
+        t.grad = g if t.grad is None else t.grad + g
 
 class Function:
+  def __init__(self, *x): self.parents = x
+
   @classmethod
-  def apply(fn, *x): return Tensor(fn().forward(*[t.data for t in x]))
+  def apply(fn, *x): ctx = fn(*x); return Tensor(ctx.forward(*[t.data for t in x]), ctx=ctx)
 
   def forward(self, *args): raise NotImplementedError
   def backward(self, *args): raise NotImplementedError
@@ -38,14 +45,14 @@ class Neg(Function):
 
 class Add(Function):
   def forward(self, x, y): return x + y
-  def backward(self, grad): return
+  def backward(self, grad): return grad, grad
 
 class Sub(Function):
   def forward(self, x, y): return x - y
 
 class Mul(Function):
-  def forward(self, x, y): return x * y
-  def backward(self, grad): return
+  def forward(self, x, y): self.x, self.y = x, y; return x * y
+  def backward(self, grad): return self.y * grad, self.x * grad
 
 class Pow(Function):
   def forward(self, x, y): return x ** y

@@ -21,9 +21,8 @@ class Tensor:
   def backward(self):
     def toposort(node, visited, ret):
       visited.add(node)
-      if node.ctx is not None:
-        for t in node.ctx.parents:
-          if t not in visited and t.ctx: toposort(t, visited, ret)
+      for t in node.ctx.parents:
+        if t not in visited and t.ctx: toposort(t, visited, ret)
       ret.append(node)
       return ret
     self.grad = np.array(1)

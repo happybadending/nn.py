@@ -7,7 +7,7 @@ class Tensor:
     self.ctx = ctx
 
   def __repr__(self):
-    return f"<T {self.data}>"
+    return f"<Tensor {self.data} grad {self.grad}>"
 
   def __neg__(self): return Neg.apply(self)
 
@@ -21,9 +21,9 @@ class Tensor:
   def backward(self):
     def toposort(node, visited, ret):
       visited.add(node)
-      if node.ctx is None:
+      if node.ctx is not None:
         for t in node.ctx.parents:
-          if t not in visited: toposort(t, visited, ret)
+          if t not in visited and t.ctx: toposort(t, visited, ret)
       ret.append(node)
       return ret
     self.grad = np.array(1)

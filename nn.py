@@ -17,6 +17,7 @@ class Tensor:
   @staticmethod
   def tensor(x): return Tensor(x) if not isinstance(x, Tensor) else x
   def __neg__(self): return Neg.apply(self)
+
   def __add__(self, x): return Add.apply(self, self.tensor(x))
   def __sub__(self, x): return Sub.apply(self, self.tensor(x))
   def __mul__(self, x): return Mul.apply(self, self.tensor(x))
@@ -27,6 +28,9 @@ class Tensor:
   def __radd__(self, x): return Add.apply(self.tensor(x), self)
   def __rsub__(self, x): return Sub.apply(self.tensor(x), self)
   def __rmul__(self, x): return Mul.apply(self.tensor(x), self)
+  def __rpow__(self, x): return Pow.apply(self.tensor(x), self)
+  def __rtruefiv__(self, x): return Div.apply(self.tensor(x), self)
+  def __rmatmul__(self, x): return MatMul.apply(self.tensor(x), self)
 
   @staticmethod
   def argmax(*args, **kwargs): return Tensor(np.argmax(*args, **kwargs))

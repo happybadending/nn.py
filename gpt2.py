@@ -1,10 +1,7 @@
-# based on https://github.com/jaymody/picoGPT
-
-from  nn import Tensor
+from  nn import Tensor, progressed
 import os, urllib.request
 import tiktoken
 import safetensors.numpy
-from tqdm import tqdm
 import fire
 
 class Embedding():
@@ -104,8 +101,8 @@ class GPT2:
     self.tokenizer = tokenizer
 
   def generate(self, prompt='<|endoftext|>', n_toks=50, temperature=0):
-    toks = self.tokenizer.encode(prompt)
-    for _ in tqdm(range(n_toks)):
+    toks = self.tokenizer.encode(prompt, allowed_special={'<|endoftext|>'})
+    for _ in progressed(range(n_toks)):
       logits = self.model(Tensor(toks), temperature)
       toks.append(int(Tensor.argmax(logits[-1].data).data)) # TODO: not be greedy
     print(self.tokenizer.decode(toks[len(toks) - n_toks:]))
@@ -129,7 +126,7 @@ class GPT2:
       p = k.split('.')
       if k.startswith('h'): insert(weights['block'][int(p[1])], p[2:], v)
       else: insert(weights, p, v)
-    model = GPT2(Transformer(params), tiktoken.get_encoding('gpt2'))
+    gpt = GPT2(Transformer(params), tiktoken.get_encoding('gpt2'))
     def load_weights(cls, w):
       for k,v in w.items():
         if isinstance(v, dict):
@@ -139,8 +136,8 @@ class GPT2:
             load_weights(getattr(cls, k)[i], d)
         else:
           setattr(cls, k, Tensor(v))
-    load_weights(model.model, weights)
-    return model
+    load_weights(gpt.model, weights)
+    return gpt
 
 gpt = GPT2.build('gpt2')
 fire.Fire(gpt.generate)

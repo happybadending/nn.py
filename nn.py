@@ -1,12 +1,19 @@
 import numpy as np
 
+def progressed(it):
+  n = len(it)
+  for i, k in enumerate(it, 1):
+    yield k
+    print(end=f'\r{i / n * 100:3.0f}%%|%-65s| {i}/{n}' % (chr(9608) * (65 * i // n)))
+  print()
+
 class Tensor:
   def __init__(self, data, ctx=None):
-    self.data = np.array(data)
+    self.data = self.numpy(data)
     self.grad = None
     self.ctx = ctx
 
-  def __repr__(self): return f"<Tensor {self.data} grad {self.grad}>"
+  def __repr__(self): return f'<Tensor {self.data} grad {self.grad}>'
   def __getitem__(self, x): return Tensor(self.data[x])
 
   @property
@@ -15,7 +22,12 @@ class Tensor:
   def T(self): return Tensor(self.data.T)
 
   @staticmethod
+  def numpy(x):
+    import numpy
+    return numpy.array(x)  
+  @staticmethod
   def tensor(x): return Tensor(x) if not isinstance(x, Tensor) else x
+
   def __neg__(self): return Neg.apply(self)
 
   def __add__(self, x): return Add.apply(self, self.tensor(x))
@@ -58,7 +70,7 @@ class Tensor:
         if t not in visited and t.ctx: toposort(t, visited, ret)
       ret.append(node)
       return ret
-    self.grad = np.array(1)
+    self.grad = self.numpy(1)
     for node in reversed(toposort(self, set(), [])):
       for t, g in zip(node.ctx.parents, node.ctx.backward(node.grad)):
         t.grad = g if t.grad is None else t.grad + g

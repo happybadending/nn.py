@@ -6,17 +6,11 @@ import fire
 
 class Embedding():
   def __init__(self): self.weight = None
-  def __call__(self, x):
-    assert isinstance(x, Tensor), type(x)
-    assert not isinstance(x.data, Tensor), type(x.data)
-    return self.weight[x.data]
+  def __call__(self, x): return self.weight[x.data.astype(int)]
 
 class Linear:
   def __init__(self): self.weight = self.bias = None
-  def __call__(self, x):
-    assert isinstance(x, Tensor), type(x)
-    assert not isinstance(x.data, Tensor), type(x.data)
-    return x @ self.weight + self.bias
+  def __call__(self, x): return x @ self.weight + self.bias
 
 class Attention():
   def __init__(self):
@@ -25,14 +19,9 @@ class Attention():
     self.c_proj = Linear()
 
   def __call__(self, x, n_heads):
-    assert isinstance(x, Tensor), type(x)
-    assert not isinstance(x.data, Tensor), type(x.data)
-    def softmax(x):
-      e = Tensor.exp((x - Tensor.max(x.data, axis=-1, keepdims=True)).data)
-      return e / Tensor.sum(e.data, axis=-1, keepdims=True)
     def attention(q, k, v, mask):
-      return softmax(q @ k.T / Tensor.sqrt(q.shape[-1]) + mask) @ v
-    mask = (1 - Tensor.tri(x.shape[0], dtype=x.data.dtype)) * -1e10
+      return (q @ k.T / q.shape[-1] ** 0.5 + mask).softmax() @ v
+    mask = Tensor.tri(x.shape[0], lower=0, upper=-1e10)
     y = self.c_attn(x)
     qkv = Tensor.split(y.data, 3, axis=-1) # TODO: add kv cache
     qkv = list(map(lambda x: Tensor.split(x.data, n_heads, axis=-1), qkv.data))
@@ -46,11 +35,7 @@ class FeedForward():
     self.c_proj = Linear()
 
   def __call__(self, x):
-    assert isinstance(x, Tensor), type(x)
-    assert not isinstance(x.data, Tensor), type(x.data)
-    def gelu(x):
-      return 0.5 * x * (1 + Tensor.tanh(x.data * 0.7978845608 * (1 + 0.044715 * x.data * x.data)))
-    return self.c_proj(gelu(self.c_fc(x)))
+    return self.c_proj(self.c_fc(x).gelu())
 
 class LayerNorm():
   def __init__(self):
@@ -58,9 +43,7 @@ class LayerNorm():
     self.bias = None
 
   def __call__(self, x, eps=1e-5):
-    assert isinstance(x, Tensor), type(x)
-    assert not isinstance(x.data, Tensor), type(x.data)
-    rms = ((x*x).data.mean(axis=-1, keepdims=True) + eps) ** 0.5
+    rms = ((x*x).mean() + eps) ** 0.5
     return x / rms * self.weight + self.bias
 
 class TransformerBlock():
@@ -71,8 +54,6 @@ class TransformerBlock():
     self.ln_2 = LayerNorm()
 
   def __call__(self, x, n_heads):
-    assert isinstance(x, Tensor), type(x)
-    assert not isinstance(x.data, Tensor), type(x.data)
     y = x + self.attn(self.ln_1(x), n_heads)
     return y + self.mlp(self.ln_2(y))
 
@@ -85,15 +66,10 @@ class Transformer():
     self.ln_f = LayerNorm()
 
   def __call__(self, x, temperature):
-    assert isinstance(x, Tensor), type(x)
-    assert not isinstance(x.data, Tensor), type(x.data)
-    def softmax(x):
-      e = Tensor.exp((x - Tensor.max(x.data, axis=-1, keepdims=True)).data)
-      return e / Tensor.sum(e.data, axis=-1, keepdims=True)
     y = self.wte(x) + self.wpe(Tensor(range(len(x.data))))
     for h in self.block: y = h(y, self.p['n_heads'])
     y = self.ln_f(y) @ self.wte.weight.T
-    return softmax(y / (temperature + 1e-10))
+    return (y / (temperature + 1e-10)).softmax()
 
 class GPT2:
   def __init__(self, model, tokenizer):

@@ -1,1 +1,1 @@
-fun with neural nets
+tensor library art project

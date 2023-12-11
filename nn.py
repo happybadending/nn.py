@@ -11,12 +11,12 @@ class Tensor:
     self.grad = None
     self.ctx = ctx
 
-  def __repr__(self): return f'{self.data!r}{f" grad= {self.grad!r}" if self.grad else ""}'
+  def __repr__(self): return f'{self.data!r}{f' grad= {self.grad!r}' if self.grad else ''}'
   def __getitem__(self, x): return Tensor(self.data.__getitem__(x))
   @property
   def shape(self): return self.data.shape
 
-  @staticmethod 
+  @staticmethod
   def numpy(x):
     import numpy
     return numpy.array(x, dtype=x.dtype if getattr(x, 'dtype', False) else numpy.float32)
@@ -29,7 +29,7 @@ class Tensor:
   @property
   def T(self):#return self.transpose(*reversed(range(len(self.shape))))
     t = range(len(self.shape))
-    return self.transpose(*t[:-2], t[-1], t[-2])
+    return self.transpose(*t[:-2], t[-1], t[-2]) if len(t) > 1 else self.transpose(*t)
   def transpose(self, *axis): return Transpose.apply(self, axis=axis)
   def reshape(self, *shape): return Reshape.apply(self, shape=shape)
   def expand(self, *shape): return Expand.apply(self, shape=shape)
@@ -49,22 +49,23 @@ class Tensor:
   def __add__(self, x): return Add.apply(*self.broadcasted(x))
   def __sub__(self, x): return Sub.apply(*self.broadcasted(x))
   def __mul__(self, x): return Mul.apply(*self.broadcasted(x))
+  def __pow__(self, x): return Pow.apply(*self.broadcasted(x))
   def __truediv__(self, x): return self * x ** -1
   def __radd__(self, x): return Add.apply(*self.broadcasted(x, reflected=True))
   def __rsub__(self, x): return Sub.apply(*self.broadcasted(x, reflected=True))
   def __rmul__(self, x): return Mul.apply(*self.broadcasted(x, reflected=True))
-  def __rtruediv__(self, x): y, z = self.broadcasted(x, reflected=True); return y * z ** -1
+  def __rpow__(self, x): return Pow.apply(*self.broadcasted(x, reflected=True))
+  def __rtruediv__(self, x):  return x * self ** -1
   def __lt__(self, x): return Less.apply(*self.broadcasted(x))
   def __gt__(self, x): return Less.apply(*self.broadcasted(x, reflected=True))
   def __le__(self, x): return 1 - (self > x)
   def __ge__(self, x): return 1 - (self < x)
 
-  def log(self): return Log.apply(self)
   def exp(self): return Exp.apply(self)
-  def __pow__(self, x): return (self.log() * x).exp()
   def __matmul__(self, x):
-    y = self.reshape(*self.shape[:-1], 1, self.shape[-1])
-    z = x.reshape(*x.shape[:-2], 1, *x.shape[-2:]).T
+    m = min(len(self.shape) - 1, len(x.shape) - 1, 1)
+    y = self.reshape(*self.shape[:-1], *(1,) * m, self.shape[-1])
+    z = x.reshape(*x.shape[:-2], *(1,) * m, *x.shape[-min(len(x.shape), 2):]).T
     return (y * z).sum()
 
   def sum(self, axis=-1): return Sum.apply(self, axis=axis)
@@ -118,11 +119,11 @@ class Mul(Function):
   def forward(self, x, y): self.x, self.y = x, y; return x * y
   def backward(self, grad): return self.y * grad, self.x * grad
 
+class Pow(Function):
+  def forward(self, x, y): return x ** y
+
 class Less(Function):
   def forward(self, x, y): return x < y
-
-class Log(Function):
-  def forward(self, x): import numpy; return numpy.log(x)
 
 class Exp(Function):
   def forward(self, x): import numpy; return numpy.exp(x)

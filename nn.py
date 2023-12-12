@@ -26,10 +26,14 @@ class Tensor:
     y = Tensor(range(x)).reshape(1, x).expand(x, x)
     return (y <= y.T) * lower + (y > y.T) * upper
 
+  #def split(self, n): splits on axis=-1 (make general or chop?)
+  #  dxd= list(self.reshape(self.shape[0], n, self.shape[1] // n).transpose(1, 0, 2))
+  #dxdxd= list(self.reshape(self.shape[0], self.shape[1], n, self.shape[2] // n).transpose(2, 0, 1, 3))
+
   @property
   def T(self):#return self.transpose(*reversed(range(len(self.shape))))
-    t = range(len(self.shape))
-    return self.transpose(*t[:-2], t[-1], t[-2]) if len(t) > 1 else self.transpose(*t)
+    axis = range(len(self.shape))
+    return self.transpose(*axis[:-2], axis[-1], axis[-2]) if len(axis) > 1 else self.transpose(*axis)
   def transpose(self, *axis): return Transpose.apply(self, axis=axis)
   def reshape(self, *shape): return Reshape.apply(self, shape=shape)
   def expand(self, *shape): return Expand.apply(self, shape=shape)
@@ -61,19 +65,19 @@ class Tensor:
   def __le__(self, x): return 1 - (self > x)
   def __ge__(self, x): return 1 - (self < x)
 
+  def sum(self, axis=-1, keepdim=True): return Sum.apply(self, axis=axis, keepdim=keepdim)
+  def max(self, axis=-1, keepdim=True): return Max.apply(self, axis=axis, keepdim=keepdim)
+  def mean(self, axis=-1, keepdim=True): return self.sum(axis=axis, keepdim=keepdim) / self.shape[axis]
+  def softmax(self):
+    y = (self - self.max()).exp()
+    return y / y.sum()
+
   def exp(self): return Exp.apply(self)
   def __matmul__(self, x):
     m = min(len(self.shape) - 1, len(x.shape) - 1, 1)
     y = self.reshape(*self.shape[:-1], *(1,) * m, self.shape[-1])
     z = x.reshape(*x.shape[:-2], *(1,) * m, *x.shape[-min(len(x.shape), 2):]).T
     return (y * z).sum()
-
-  def sum(self, axis=-1): return Sum.apply(self, axis=axis)
-  def max(self, axis=-1): return Max.apply(self, axis=axis)
-  def mean(self, axis=-1): return self.sum(axis=axis) / self.shape[axis]
-  def softmax(self, axis=-1):
-    y = (self - self.max(axis=axis)).exp()
-    return y / y.sum(axis=axis)
 
   def tanh(self): 2 / (1 + (-2 * self).exp()) - 1
   def gelu(self): 0.5 * self * (1 + (self * 0.7978845608 * (1 + 0.044715 * self * self)).tanh())
@@ -125,11 +129,11 @@ class Pow(Function):
 class Less(Function):
   def forward(self, x, y): return x < y
 
-class Exp(Function):
-  def forward(self, x): import numpy; return numpy.exp(x)
-
 class Sum(Function):
-  def forward(self, x, axis): return x.sum(axis)
+  def forward(self, x, axis, keepdim): return x.sum(axis=axis, keepdims=keepdim)
 
 class Max(Function):
-  def forward(self, x, axis): return x.max(axis)
+  def forward(self, x, axis, keepdim): return x.max(axis=axis, keepdims=keepdim)
+
+class Exp(Function):
+  def forward(self, x): import numpy; return numpy.exp(x)

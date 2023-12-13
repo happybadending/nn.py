@@ -21,15 +21,6 @@ class Tensor:
     import numpy
     return numpy.array(x, dtype=x.dtype if getattr(x, 'dtype', False) else numpy.float32)
 
-  @staticmethod
-  def tri(x, lower=1, upper=0):
-    y = Tensor(range(x)).reshape(1, x).expand(x, x)
-    return (y <= y.T) * lower + (y > y.T) * upper
-
-  #def split(self, n): splits on axis=-1 (make general or chop?)
-  #  dxd= list(self.reshape(self.shape[0], n, self.shape[1] // n).transpose(1, 0, 2))
-  #dxdxd= list(self.reshape(self.shape[0], self.shape[1], n, self.shape[2] // n).transpose(2, 0, 1, 3))
-
   @property
   def T(self):#return self.transpose(*reversed(range(len(self.shape))))
     axis = range(len(self.shape))
@@ -65,6 +56,7 @@ class Tensor:
   def __le__(self, x): return 1 - (self > x)
   def __ge__(self, x): return 1 - (self < x)
 
+  #do keepdim manually?
   def sum(self, axis=-1, keepdim=True): return Sum.apply(self, axis=axis, keepdim=keepdim)
   def max(self, axis=-1, keepdim=True): return Max.apply(self, axis=axis, keepdim=keepdim)
   def mean(self, axis=-1, keepdim=True): return self.sum(axis=axis, keepdim=keepdim) / self.shape[axis]
@@ -77,10 +69,10 @@ class Tensor:
     m = min(len(self.shape) - 1, len(x.shape) - 1, 1)
     y = self.reshape(*self.shape[:-1], *(1,) * m, self.shape[-1])
     z = x.reshape(*x.shape[:-2], *(1,) * m, *x.shape[-min(len(x.shape), 2):]).T
-    return (y * z).sum()
+    return (y * z).sum(keepdim=False)
 
-  def tanh(self): 2 / (1 + (-2 * self).exp()) - 1
-  def gelu(self): 0.5 * self * (1 + (self * 0.7978845608 * (1 + 0.044715 * self * self)).tanh())
+  def tanh(self): return 2 / (1 + (-2 * self).exp()) - 1
+  def gelu(self): return 0.5 * self * (1 + (self * 0.7978845608 * (1 + 0.044715 * self * self)).tanh())
 
   def backward(self):
     def toposort(node, visited, ret):
@@ -98,7 +90,9 @@ class Function:
   def __init__(self, *x): self.parents = x
 
   @classmethod
-  def apply(fn, *x, **kwargs): ctx = fn(*x); return Tensor(ctx.forward(*[t.data for t in x], **kwargs), ctx=ctx)
+  def apply(fn, *x, **kwargs):
+    ctx = fn(*x)
+    return Tensor(ctx.forward(*[t.data for t in x], **kwargs), ctx=ctx)
 
   def forward(self, *args): raise NotImplementedError
   def backward(self, *args): raise NotImplementedError
@@ -120,7 +114,9 @@ class Sub(Function):
   def forward(self, x, y): return x - y
 
 class Mul(Function):
-  def forward(self, x, y): self.x, self.y = x, y; return x * y
+  def forward(self, x, y):
+    self.x, self.y = x, y
+    return x * y
   def backward(self, grad): return self.y * grad, self.x * grad
 
 class Pow(Function):

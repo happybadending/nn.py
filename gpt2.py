@@ -1,7 +1,7 @@
 from  nn import Tensor, progressed
 import os, urllib.request
 import tiktoken
-import safetensors.numpy
+import torch
 import fire
 
 class Embedding():
@@ -9,42 +9,34 @@ class Embedding():
   def __call__(self, x): return self.weight[x.data.astype(int)]
 
 class Linear:
-  def __init__(self): self.weight = self.bias = None
+  def __init__(self): self.weight, self.bias = None, None
   def __call__(self, x): return x @ self.weight + self.bias
+
+class LayerNorm():
+  def __init__(self): self.weight, self.bias = None, None
+  def __call__(self, x, eps=1e-5):
+    rms = ((x*x).mean() + eps) ** 0.5
+    return x / rms * self.weight + self.bias
+
+class FeedForward():
+  def __init__(self): self.c_fc, self.c_proj = Linear(), Linear()
+  def __call__(self, x):  return self.c_proj(self.c_fc(x).gelu())
 
 class Attention():
   def __init__(self):
-    self.bias = None
+    self.bias = None  
     self.c_attn = Linear()
     self.c_proj = Linear()
 
   def __call__(self, x, n_heads):
-    def attention(q, k, v, mask):
-      return (q @ k.T / q.shape[-1] ** 0.5 + mask).softmax() @ v
-    mask = Tensor.tri(x.shape[0], lower=0, upper=-1e10)
+    def attention(q, k, v, mask): return (q @ k.T / q.shape[-1] ** 0.5 + mask).softmax() @ v
+    mask = Tensor(range(x.shape[0])).reshape(1, x.shape[0]).expand(x.shape[0], x.shape[0])
+    mask = (mask > mask.T) * -1e10
     y = self.c_attn(x)
-    qkv = Tensor.split(y.data, 3, axis=-1) # TODO: add kv cache
-    qkv = list(map(lambda x: Tensor.split(x.data, n_heads, axis=-1), qkv.data))
+    qkv = list(y.reshape(y.shape[0], 3, y.shape[1] // 3).transpose(1, 0, 2))
+    qkv = list(map(lambda x: x.reshape(x.shape[0], n_heads, x.shape[1] // n_heads).transpose(1, 0, 2), qkv))
     y = [attention(q, k, v, mask) for q, k, v in zip(*qkv)]
-    for i in range(len(y)): y[i] = y[i].data
-    return self.c_proj(Tensor.hstack(y))
-
-class FeedForward():
-  def __init__(self):
-    self.c_fc = Linear()
-    self.c_proj = Linear()
-
-  def __call__(self, x):
-    return self.c_proj(self.c_fc(x).gelu())
-
-class LayerNorm():
-  def __init__(self):
-    self.weight = None
-    self.bias = None
-
-  def __call__(self, x, eps=1e-5):
-    rms = ((x*x).mean() + eps) ** 0.5
-    return x / rms * self.weight + self.bias
+    return self.c_proj(Tensor([z.data for z in y]).transpose(1, 0, 2).reshape(*x.shape))
 
 class TransformerBlock():
   def __init__(self):
@@ -91,14 +83,15 @@ class GPT2:
       'gpt2-large': dict(n_layers=36, n_heads=20, dim=1280, n_vocab=50257, eps=1e-5),
       'gpt2-xl': dict(n_layers=48, n_heads=25, dim=1600, n_vocab=50257, eps=1e-5),
     }[model_size]
-    if not os.path.exists(model_size+'.safetensors'): urllib.request.urlretrieve('https://huggingface.co/'+model_size+'/resolve/main/model.safetensors', model_size+'.safetensors')
+    if not os.path.exists(model_size+'.bin'):
+      urllib.request.urlretrieve('https://huggingface.co/'+model_size+'/resolve/main/pytorch_model.bin', model_size+'.bin')
     weights = dict(block=[{} for _ in range(params['n_layers'])])
     def insert(d, k, v):
       if not k: return v
       if k[0] not in d: d[k[0]] = {}
-      d[k[0]] = insert(d[k[0]], k[1:], v)
+      d[k[0]] = insert(d[k[0]], k[1:], v) 
       return d
-    for k,v in safetensors.numpy.load_file(model_size+'.safetensors').items():
+    for k, v in torch.load(model_size+'.bin').items():
       p = k.split('.')
       if k.startswith('h'): insert(weights['block'][int(p[1])], p[2:], v)
       else: insert(weights, p, v)
@@ -111,7 +104,7 @@ class GPT2:
           for i,d in enumerate(v):
             load_weights(getattr(cls, k)[i], d)
         else:
-          setattr(cls, k, Tensor(v))
+          setattr(cls, k, Tensor(v.numpy()))
     load_weights(gpt.model, weights)
     return gpt
 

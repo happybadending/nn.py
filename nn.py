@@ -1,31 +1,20 @@
-def progressed(it):
-  n = len(it)
-  for i, k in enumerate(it, 1):
-    yield k
-    print(end=f'\r{i / n * 100:3.0f}%%|%-65s| {i}/{n}' % (chr(9608) * (65 * i // n)))
-  print()
-
 class Tensor:
   def __init__(self, data, ctx=None):
     self.data = self.numpy(data)
     self.grad = None
     self.ctx = ctx
 
-  def __repr__(self): return f'{self.data!r}{f' grad= {self.grad!r}' if self.grad else ''}'
-  def __getitem__(self, x): return Tensor(self.data.__getitem__(x))
   @property
   def shape(self): return self.data.shape
+  def __getitem__(self, x): return Tensor(self.data[x])
+  def __repr__(self): return f'{self.data!r}{f' grad= {self.grad!r}' if self.grad else ''}'
 
   @staticmethod
   def numpy(x):
     import numpy
     return numpy.array(x, dtype=x.dtype if getattr(x, 'dtype', False) else numpy.float32)
 
-  @property
-  def T(self):#return self.transpose(*reversed(range(len(self.shape))))
-    axis = range(len(self.shape))
-    return self.transpose(*axis[:-2], axis[-1], axis[-2]) if len(axis) > 1 else self.transpose(*axis)
-  def transpose(self, *axis): return Transpose.apply(self, axis=axis)
+  def transpose(self, *shape): return Transpose.apply(self, shape=shape)
   def reshape(self, *shape): return Reshape.apply(self, shape=shape)
   def expand(self, *shape): return Expand.apply(self, shape=shape)
 
@@ -56,23 +45,25 @@ class Tensor:
   def __le__(self, x): return 1 - (self > x)
   def __ge__(self, x): return 1 - (self < x)
 
-  #do keepdim manually?
   def sum(self, axis=-1, keepdim=True): return Sum.apply(self, axis=axis, keepdim=keepdim)
   def max(self, axis=-1, keepdim=True): return Max.apply(self, axis=axis, keepdim=keepdim)
-  def mean(self, axis=-1, keepdim=True): return self.sum(axis=axis, keepdim=keepdim) / self.shape[axis]
+  def mean(self, axis=-1, keepdim=True): return self.sum(axis, keepdim) / self.shape[axis]
   def softmax(self):
-    y = (self - self.max()).exp()
+    y = 2 ** ((self - self.max()) * 1.4426950408889634)
     return y / y.sum()
 
-  def exp(self): return Exp.apply(self)
   def __matmul__(self, x):
-    m = min(len(self.shape) - 1, len(x.shape) - 1, 1)
-    y = self.reshape(*self.shape[:-1], *(1,) * m, self.shape[-1])
-    z = x.reshape(*x.shape[:-2], *(1,) * m, *x.shape[-min(len(x.shape), 2):]).T
+    k = min(len(self.shape) - 1, (lxs := len(x.shape)) - 1, 1)
+    y = self.reshape(*self.shape[:-1], *(1,) * k, self.shape[-1])
+    z = x.reshape(*x.shape[:-2], *(1,) * k, *x.shape[-min(lxs, 2):])
+    if len(rlzs := range(len(z.shape))) > 1: z = z.transpose(*rlzs[:-2], rlzs[-1], rlzs[-2])
     return (y * z).sum(keepdim=False)
+  def __matmul__(self, x): import numpy; return Tensor(numpy.matmul(self.data, x.data))
 
-  def tanh(self): return 2 / (1 + (-2 * self).exp()) - 1
-  def gelu(self): return 0.5 * self * (1 + (self * 0.7978845608 * (1 + 0.044715 * self * self)).tanh())
+  def sigmoid(self): return 1 / (1 + 2 ** (self  * -1.4426950408889634))
+  def silu(self): return self * self.sigmoid()
+  def tanh(self): return 2 * (2 * self).sigmoid() - 1
+  def gelu(self): return self * (self * 1.702).sigmoid()
 
   def backward(self):
     def toposort(node, visited, ret):
@@ -94,11 +85,8 @@ class Function:
     ctx = fn(*x)
     return Tensor(ctx.forward(*[t.data for t in x], **kwargs), ctx=ctx)
 
-  def forward(self, *args): raise NotImplementedError
-  def backward(self, *args): raise NotImplementedError
-
 class Transpose(Function):
-  def forward(self, x, axis): return x.transpose(axis)
+  def forward(self, x, shape): return x.transpose(shape)
 
 class Reshape(Function):
   def forward(self, x, shape): return x.reshape(shape)
@@ -126,10 +114,7 @@ class Less(Function):
   def forward(self, x, y): return x < y
 
 class Sum(Function):
-  def forward(self, x, axis, keepdim): return x.sum(axis=axis, keepdims=keepdim)
+  def forward(self, x, axis, keepdim): return x.sum(axis, keepdims=keepdim)
 
 class Max(Function):
-  def forward(self, x, axis, keepdim): return x.max(axis=axis, keepdims=keepdim)
-
-class Exp(Function):
-  def forward(self, x): import numpy; return numpy.exp(x)
+  def forward(self, x, axis, keepdim): return x.max(axis, keepdims=keepdim)

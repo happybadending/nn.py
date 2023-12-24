@@ -1,8 +1,7 @@
 from  nn import Tensor
-import os, urllib.request
+import os, urllib.request, argparse
 import tiktoken
 from torch import load
-from fire import Fire
 
 class Embedding():
   def __init__(self): self.weight = None
@@ -72,12 +71,12 @@ class GPT2:
       print(end=f'\r{i / n * 100:3.0f}%%|%-65s| {i}/{n}' % (chr(9608) * (65 * i // n)))
     print()
 
-  def generate(self, prompt='<|endoftext|>', n_toks=50, temperature=0):
+  def generate(self, prompt, n_toks, temperature):
     toks = self.tokenizer.encode(prompt, allowed_special={'<|endoftext|>'})
     for _ in self.progressed(range(n_toks)):
       logits = self.model(Tensor(toks), temperature)
       toks.append(max(zip(logits.data, range(logits.shape[0])))[1])
-    print(self.tokenizer.decode(toks[len(toks) - n_toks:]))
+    print(prompt, self.tokenizer.decode(toks[len(toks) - n_toks:]), sep='')
 
   @staticmethod
   def build(model_size):
@@ -111,5 +110,12 @@ class GPT2:
     load_weights(gpt.model, weights)
     return gpt
 
-gpt = GPT2.build('gpt2')
-Fire(gpt.generate)
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--model_size', type=str, default='gpt2', help='[gpt2, gpt2-medium, gpt2-large, gpt2-xl]')
+parser.add_argument('--prompt', type=str, default='Alan Turing theorized that computers would one day become', help='starting phrase')
+parser.add_argument('--n_toks', type=int, default=8, help='number of tokens to generate')
+parser.add_argument('--temperature', type=float, default=0, help='model randomness')
+args = parser.parse_args()
+
+gpt = GPT2.build(args.model_size)
+gpt.generate(args.prompt, args.n_toks, args.temperature)

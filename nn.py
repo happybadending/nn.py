@@ -49,7 +49,7 @@ class Tensor:
   def max(self, axis=-1, keepdim=True): return Max.apply(self, axis=axis, keepdim=keepdim)
   def mean(self, axis=-1, keepdim=True): return self.sum(axis, keepdim) / self.shape[axis]
   def softmax(self):
-    y = 2 ** ((self - self.max()) * 1.4426950408889634)
+    y = 2 ** ((self - self.max()) * 1.44269504)
     return y / y.sum()
 
   def __matmul__(self, x):
@@ -60,7 +60,7 @@ class Tensor:
     return (y * z).sum(keepdim=False)
   def __matmul__(self, x): import numpy; return Tensor(numpy.matmul(self.data, x.data))
 
-  def sigmoid(self): return 1 / (1 + 2 ** (self  * -1.4426950408889634))
+  def sigmoid(self): return 1 / (1 + 2 ** (self  * -1.44269504))
   def silu(self): return self * self.sigmoid()
   def tanh(self): return 2 * (2 * self).sigmoid() - 1
   def gelu(self): return self * (self * 1.702).sigmoid()

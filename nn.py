@@ -1,3 +1,5 @@
+import numpy as np
+
 class Tensor:
   def __init__(self, data, ctx=None):
     self.data = self.numpy(data)
@@ -10,9 +12,7 @@ class Tensor:
   def __repr__(self): return f'{self.data!r}{f' grad= {self.grad!r}' if self.grad else ''}'
 
   @staticmethod
-  def numpy(x):
-    import numpy
-    return numpy.array(x, dtype=x.dtype if getattr(x, 'dtype', False) else numpy.float32)
+  def numpy(x): return np.array(x, dtype=x.dtype if getattr(x, 'dtype', False) else np.float32)
 
   def transpose(self, *shape): return Transpose.apply(self, shape=shape)
   def reshape(self, *shape): return Reshape.apply(self, shape=shape)
@@ -52,13 +52,13 @@ class Tensor:
     y = 2 ** ((self - self.max()) * 1.44269504)
     return y / y.sum()
 
-  def __matmul__(self, x):
-    k = min(len(self.shape) - 1, (lxs := len(x.shape)) - 1, 1)
-    y = self.reshape(*self.shape[:-1], *(1,) * k, self.shape[-1])
-    z = x.reshape(*x.shape[:-2], *(1,) * k, *x.shape[-min(lxs, 2):])
-    if len(rlzs := range(len(z.shape))) > 1: z = z.transpose(*rlzs[:-2], rlzs[-1], rlzs[-2])
-    return (y * z).sum(keepdim=False)
-  def __matmul__(self, x): import numpy; return Tensor(numpy.matmul(self.data, x.data))
+  #def __matmul__(self, x):
+  #  n = min(len(self.shape) -1, (lxs := len(x.shape)) - 1, 1)
+  #  y = self.reshape(*self.shape[:-1], *(1,) * n, self.shape[-1])
+  #  z = x.reshape(*x.shape[:-2], *(1,) * n, *x.shape[-min(lxs, 2):])
+  #  if len(rlzs := range(len(z.shape))) > 1: z = z.transpose(*rlzs[:-2], rlzs[-1], rlzs[-2])
+  #  return (y * z).sum(keepdim=False)
+  def __matmul__(self, x): return Tensor(np.matmul(self.data, x.data))
 
   def sigmoid(self): return 1 / (1 + 2 ** (self  * -1.44269504))
   def silu(self): return self * self.sigmoid()
@@ -92,7 +92,7 @@ class Reshape(Function):
   def forward(self, x, shape): return x.reshape(shape)
 
 class Expand(Function):
-  def forward(self, x, shape): import numpy; return numpy.broadcast_to(x, shape)
+  def forward(self, x, shape): return np.broadcast_to(x, shape)
 
 class Add(Function):
   def forward(self, x, y): return x + y

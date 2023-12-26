@@ -113,8 +113,8 @@ class GPT2:
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--model_size', type=str, default='gpt2', help='[gpt2, gpt2-medium, gpt2-large, gpt2-xl]')
 parser.add_argument('--prompt', type=str, default='Alan Turing theorized that computers would one day become', help='starting phrase')
-parser.add_argument('--n_toks', type=int, default=8, help='number of tokens to generate')
-parser.add_argument('--temperature', type=float, default=0, help='model randomness')
+parser.add_argument('--n_toks', type=int, default=8, help='tokens to generate')
+parser.add_argument('--temperature', type=float, default=0, help='randomness')
 args = parser.parse_args()
 
 gpt = GPT2.build(args.model_size)

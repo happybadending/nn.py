@@ -73,7 +73,7 @@ class GPT2:
     start_pos = len(toks)
     for i in range(n_toks):
       logits = self.model(Tensor(toks), temperature, start_pos, i)
-      toks = random.choices(range(50257), weights=logits.data)
+      toks = random.choices(range(50257), logits.data)
       print(self.tokenizer.decode(toks), end='', flush=True)
     print()
 

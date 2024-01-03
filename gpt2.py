@@ -52,13 +52,13 @@ class Transformer():
   def __init__(self, params):
     self.wte = Embedding()
     self.wpe = Embedding()
-    self.block = [TransformerBlock(params['n_heads']) for _ in range(params['n_layers'])]
+    self.h = [TransformerBlock(params['n_heads']) for _ in range(params['n_layers'])]
     self.ln_f = LayerNorm()
 
   def __call__(self, x, temperature, start_pos, i):
     pos = Tensor(range(start_pos) if not i else [start_pos + i - 1])
     y = self.wte(x) + self.wpe(pos)
-    for h in self.block: y = h(y)
+    for head in self.h: y = head(y)
     y = self.ln_f(y) @ self.wte.weight.transpose(1, 0)
     return (y[-1] / (temperature + 1e-10)).softmax()
 
@@ -85,28 +85,13 @@ class GPT2:
       'gpt2-large': dict(n_layers=36, n_heads=20),
       'gpt2-xl': dict(n_layers=48, n_heads=25),
     }[model_size]
-    if not os.path.exists(model_size+'.bin'): urllib.request.urlretrieve('https://huggingface.co/'+model_size+'/resolve/main/pytorch_model.bin', model_size+'.bin')
-    weights = dict(block=[{} for _ in range(params['n_layers'])])
-    def insert(d, k, v):
-      if not k: return v
-      if k[0] not in d: d[k[0]] = {}
-      d[k[0]] = insert(d[k[0]], k[1:], v)
-      return d
-    for k, v in load(model_size+'.bin').items():
-      p = k.split('.')
-      if k.startswith('h'): insert(weights['block'][int(p[1])], p[2:], v)
-      else: insert(weights, p, v)
     gpt = GPT2(Transformer(params), tiktoken.get_encoding('gpt2'))
-    def load_weights(cls, w):
-      for k,v in w.items():
-        if isinstance(v, dict):
-          load_weights(getattr(cls, k), v)
-        elif isinstance(v, list):
-          for i,d in enumerate(v):
-            load_weights(getattr(cls, k)[i], d)
-        else:
-          setattr(cls, k, Tensor(v.numpy()))
-    load_weights(gpt.model, weights)
+    if not os.path.exists(model_size+'.bin'): urllib.request.urlretrieve('https://huggingface.co/'+model_size+'/resolve/main/pytorch_model.bin', model_size+'.bin')
+    for k, v in load(model_size+'.bin').items():
+      k, attr = k.rsplit('.', 1)
+      dest = gpt.model
+      for p in k.split('.'): dest = dest[int(p)] if p.isdigit() else getattr(dest, p)
+      setattr(dest, attr, Tensor(v.numpy()))
     return gpt
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)

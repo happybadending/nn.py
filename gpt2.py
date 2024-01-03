@@ -1,5 +1,5 @@
 from  nn import Tensor
-import os, urllib.request, argparse
+import os, urllib.request, random, argparse
 import tiktoken
 from torch import load
 
@@ -27,12 +27,15 @@ class Attention():
     self.bias = None
     self.c_attn = Linear()
     self.c_proj = Linear()
+    self.kv_cache = Tensor([None, None])
 
   def __call__(self, x):
-    mask = Tensor(range(seq := x.shape[0])).reshape(1, seq).expand(seq, seq)
+    mask = Tensor(range(seq := x.shape[0])).reshape(1, seq)
     mask = (mask > mask.transpose(1, 0)) * -1e10
-    q, k, v = self.c_attn(x).reshape(seq, 3, self.n_heads, 64).transpose(1, 2, 0, 3)
-    return self.c_proj(((q @ k.transpose(0, 2, 1) / q.shape[-1] ** 0.5 + mask).softmax() @ v).transpose(1, 0, 2).reshape(*x.shape))
+    q, k, v = self.c_attn(x).reshape(seq, 3, self.n_heads, 64).transpose(1, 0, 2, 3)
+    self.kv_cache = Tensor([[y.data for y in list(self.kv_cache[0]) + list(k)], [y.data for y in list(self.kv_cache[1]) + list(v)]])
+    q, k, v = q.transpose(1, 0, 2), self.kv_cache[0].transpose(1, 2, 0), self.kv_cache[1].transpose(1, 0, 2)
+    return self.c_proj(((q @ k / q.shape[-1] ** 0.5 + mask).softmax() @ v).transpose(1, 0, 2).reshape(*x.shape))
 
 class TransformerBlock():
   def __init__(self, n_heads):
@@ -52,8 +55,9 @@ class Transformer():
     self.block = [TransformerBlock(params['n_heads']) for _ in range(params['n_layers'])]
     self.ln_f = LayerNorm()
 
-  def __call__(self, x, temperature):
-    y = self.wte(x) + self.wpe(Tensor(range(len(x.data))))
+  def __call__(self, x, temperature, start_pos, i):
+    pos = Tensor(range(start_pos) if not i else [start_pos + i - 1])
+    y = self.wte(x) + self.wpe(pos)
     for h in self.block: y = h(y)
     y = self.ln_f(y) @ self.wte.weight.transpose(1, 0)
     return (y[-1] / (temperature + 1e-10)).softmax()
@@ -62,21 +66,16 @@ class GPT2:
   def __init__(self, model, tokenizer):
     self.model = model
     self.tokenizer = tokenizer
-  
-  @staticmethod
-  def progressed(it):
-    n = len(it)
-    for i, k in enumerate(it, 1):
-      yield k
-      print(end=f'\r{i / n * 100:3.0f}%%|%-65s| {i}/{n}' % (chr(9608) * (65 * i // n)))
-    print()
 
   def generate(self, prompt, n_toks, temperature):
+    print(f'\033[32m{prompt}\033[0m', end='')
     toks = self.tokenizer.encode(prompt, allowed_special={'<|endoftext|>'})
-    for _ in self.progressed(range(n_toks)):
-      logits = self.model(Tensor(toks), temperature)
-      toks.append(max(zip(logits.data, range(logits.shape[0])))[1])
-    print(prompt, self.tokenizer.decode(toks[len(toks) - n_toks:]), sep='')
+    start_pos = len(toks)
+    for i in range(n_toks):
+      logits = self.model(Tensor(toks), temperature, start_pos, i)
+      toks = random.choices(range(50257), weights=logits.data)
+      print(self.tokenizer.decode(toks), end='', flush=True)
+    print()
 
   @staticmethod
   def build(model_size):
@@ -111,10 +110,10 @@ class GPT2:
     return gpt
 
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument('--model_size', type=str, default='gpt2', help='[gpt2, gpt2-medium, gpt2-large, gpt2-xl]')
-parser.add_argument('--prompt', type=str, default='Alan Turing theorized that computers would one day become', help='starting phrase')
-parser.add_argument('--n_toks', type=int, default=8, help='tokens to generate')
-parser.add_argument('--temperature', type=float, default=0, help='randomness')
+parser.add_argument('-m', '--model_size', type=str, default='gpt2', help='[gpt2, gpt2-medium, gpt2-large, gpt2-xl]')
+parser.add_argument('-p', '--prompt', type=str, default='Alan Turing theorized that computers would one day become', help='starting phrase')
+parser.add_argument('-n', '--n_toks', type=int, default=8, help='tokens to generate')
+parser.add_argument('-t', '--temperature', type=float, default=0, help='randomness')
 args = parser.parse_args()
 
 gpt = GPT2.build(args.model_size)

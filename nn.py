@@ -61,8 +61,6 @@ class Tensor:
   def __matmul__(self, x): return Tensor(np.matmul(self.data, x.data))
 
   def sigmoid(self): return 1 / (1 + 2 ** (self  * -1.44269504))
-  def silu(self): return self * self.sigmoid()
-  def tanh(self): return 2 * (2 * self).sigmoid() - 1
   def gelu(self): return self * (self * 1.702).sigmoid()
 
   def backward(self):

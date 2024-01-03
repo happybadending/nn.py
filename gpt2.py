@@ -58,7 +58,7 @@ class Transformer():
   def __call__(self, x, temperature, start_pos, i):
     pos = Tensor(range(start_pos) if not i else [start_pos + i - 1])
     y = self.wte(x) + self.wpe(pos)
-    for layer in self.h: y = layer(y)
+    for block in self.h: y = block(y)
     y = self.ln_f(y) @ self.wte.weight.transpose(1, 0)
     return (y[-1] / (temperature + 1e-10)).softmax()
 
